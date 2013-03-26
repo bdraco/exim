@@ -85,6 +85,8 @@ optionlist pipe_transport_options[] = {
       (void *)offsetof(pipe_transport_options_block, use_crlf) },
   { "use_shell",         opt_bool,
       (void *)offsetof(pipe_transport_options_block, use_shell) },
+  { "use_wrapper",         opt_stringptr,
+      (void *)offsetof(pipe_transport_options_block, use_wrapper) },
 };
 
 /* Size of the options list. An extern variable has to be used so that its
@@ -106,6 +108,7 @@ pipe_transport_options_block pipe_transport_option_defaults = {
      mac_expanded_string(EX_CANTCREAT),
   NULL,           /* check_string */
   NULL,           /* escape_string */
+  NULL,           /* use_wrapper */
   022,            /* umask */
   20480,          /* max_output */
   60*60,          /* timeout */
@@ -539,8 +542,9 @@ pipe_transport_entry(
   address_item *addr)              /* address(es) we are working on */
 {
 pid_t pid, outpid;
-int fd_in, fd_out, rc;
+int fd_in, fd_out, rc, i;
 int envcount = 0;
+int argcount = 0;
 int envsep = 0;
 int expand_fail;
 pipe_transport_options_block *ob =
@@ -690,6 +694,57 @@ if (dont_deliver)
   return FALSE;
   }
 
+if(ob->use_wrapper != NULL) {
+   uschar *expanded_use_wrapper;
+   DEBUG(D_transport)
+     debug_printf("use_wrapper: %s\n", string_printing(ob->use_wrapper));
+
+   expanded_use_wrapper = expand_string(ob->use_wrapper);
+
+   if (expanded_use_wrapper == NULL)
+     {
+     addr->transport_return = DEFER;
+     addr->message = string_sprintf("failed to expand string \"%s\" "
+       "for %s transport: %s", ob->use_wrapper, tblock->name, expand_string_message);
+     return FALSE;
+     }
+
+   DEBUG(D_transport)
+      debug_printf("expanded use_wrapper: %s\n", string_printing(expanded_use_wrapper));
+
+   /* if expanded_use_wrapper is "0" or "false", do not use the wrapper */
+   if ( (Ustrcmp(expanded_use_wrapper,"0") == 0) ||
+       (strcmpic(expanded_use_wrapper,US"false") == 0) ) {
+     DEBUG(D_transport)
+       debug_printf("use_wrapper expanded to false, ignoring use_wrapper\n");
+   } else {
+       if (expanded_use_wrapper[0] != '/')
+         {
+         addr->transport_return = DEFER;
+         addr->message = string_sprintf("use_wrapper must be an absolute path "
+           "for %s transport: %s", tblock->name, expanded_use_wrapper);
+         return FALSE;
+         }
+
+       i = 0;
+       while( argv[i] != (uschar *)0 )
+         {
+         i++;
+         }
+       for( argcount=i+1;argcount > 0;argcount--)
+         {
+         argv[argcount] = argv[argcount-1];
+         }
+       argv[0] = expanded_use_wrapper;
+
+       DEBUG(D_transport)
+         {
+         debug_printf("wrapped command:\n");
+         for (i = 0; argv[i] != (uschar *)0; i++)
+           debug_printf("  argv[%d] = %s\n", i, string_printing(argv[i]));
+         }
+    }
+}
 
 /* Handling the output from the pipe is tricky. If a file for catching this
 output is provided, we could in theory just hand that fd over to the process,

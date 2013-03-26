@@ -17,6 +17,7 @@ typedef struct {
   uschar *temp_errors;
   uschar *check_string;
   uschar *escape_string;
+  uschar *use_wrapper;
   int   umask;
   int   max_output;
   int   timeout;

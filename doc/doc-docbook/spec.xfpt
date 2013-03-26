@@ -22076,6 +22076,11 @@ modified. The &%allow_commands%& and &%restrict_to_path%& options, and the
 command is expanded as a single string, and handed to &_/bin/sh_& as data for
 its &%-c%& option.
 
+.option use_wrapper pipe string unset
+If this option is set it is expanded and it prepended to the &[execve()]&
+call made by the &(pipe)& transport.  If the wrapper expands to 0 or
+false, use_wrapper will be ignored. The wrapper must be an absolute
+path.
 
 
 .section "Using an external local delivery agent" "SECID143"
