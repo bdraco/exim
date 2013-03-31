@@ -564,62 +564,25 @@ DEBUG(D_transport) debug_printf("%s transport entered\n", tblock->name);
 addr->transport_return = OK;
 addr->basic_errno = 0;
 
-/*
- * If the pipe transport is invoked when a router redirects an address
- * directly to a pipe command (for example, from an alias or forward file),
- * $address_pipe contains the text of the pipe command, and the command
- * option on the transport is ignored. The force_command option overrides
- * this behavior and the command option is still used.
- *
- * When force_command is set we also expand the command string before
- * processing it in order to ensure $address_pipe does not get sent
- * as single argument.
- */
-if (ob->force_command)
-  {
-  DEBUG(D_transport)
-    debug_printf("pipe transport %s set force_command.\n",
-      tblock->name);
-  if (ob->cmd == NULL)
-    {
-    addr->transport_return = DEFER;
-    addr->message = string_sprintf("no command specified for %s transport "
-    "with command was forced with force_command",
-      tblock->name);
-    return FALSE;
-    }
-  /*
-  * We need to expand the entire command here so
-  * it can get split apart into argv.
-  *
-  * Its likely we are being passed something like
-  * /usr/bin/superwrap -a -b -- ${substr{1}{$address_pipe}
-  */
-  cmd = expand_string(ob->cmd);
-  if (cmd == NULL)
-    {
-    addr->transport_return = DEFER;
-    addr->message = string_sprintf("failed to expand string \"%s\" "
-      "for %s transport: %s", ob->cmd, tblock->name,
-      expand_string_message);
-    return FALSE;
-    }
-  expand_arguments = FALSE;
-  expand_fail = FAIL;
-  }
-
 /* Pipes are not accepted as general addresses, but they can be generated from
 .forward files or alias files. In those cases, the pfr flag is set, and the
 command to be obeyed is pointed to by addr->local_part; it starts with the pipe
 symbol. In other cases, the command is supplied as one of the pipe transport's
 options. */
 
-else if (testflag(addr, af_pfr) && addr->local_part[0] == '|')
+if (testflag(addr, af_pfr) && addr->local_part[0] == '|')
   {
-  cmd = addr->local_part + 1;
-  while (isspace(*cmd)) cmd++;
-  expand_arguments = testflag(addr, af_expand_pipe);
-  expand_fail = FAIL;
+    if (ob->force_command) { 
+     setflag(addr,af_force_command); 
+     cmd = ob->cmd;
+     expand_arguments = TRUE;
+     expand_fail = PANIC; 
+    } else {
+     cmd = addr->local_part + 1;
+     expand_arguments = testflag(addr, af_expand_pipe);
+     expand_fail = FAIL;
+     while (isspace(*cmd)) cmd++;
+    }
   }
 else
   {

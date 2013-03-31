@@ -2001,6 +2001,72 @@ if (expand_arguments)
       i--;
       }
 
+      /* Handle special case of $address_pipe when af_force_command is set */
+
+    else if (addr != NULL && testflag(addr,af_force_command) &&
+        (Ustrcmp(argv[i], "$address_pipe") == 0 ||
+         Ustrcmp(argv[i], "${address_pipe}") == 0))
+      {
+      int address_pipe_i;
+      int address_pipe_argcount = 0;
+      int address_pipe_max_args = 57;
+      uschar **address_pipe_argv;
+      
+      address_pipe_argv = store_get((address_pipe_max_args+1)*sizeof(uschar *));
+
+     
+      s = expand_string(addr->local_part + 1);
+      while (isspace(*s)) s++;
+
+      while (*s != 0 && address_pipe_argcount < address_pipe_max_args)
+        {
+        if (*s == '\'')
+          {
+          ss = s + 1;
+          while (*ss != 0 && *ss != '\'') ss++;
+          address_pipe_argv[address_pipe_argcount++] = ss = store_get(ss - s++);
+          while (*s != 0 && *s != '\'') *ss++ = *s++;
+          if (*s != 0) s++;
+          *ss++ = 0;
+          }
+        else address_pipe_argv[address_pipe_argcount++] = string_dequote(&s);
+        while (isspace(*s)) s++;
+        }
+
+      address_pipe_argv[address_pipe_argcount] = (uschar *)0;
+
+      /* If *s != 0 we have run out of argument slots. */
+
+      if (*s != 0)
+        {
+        uschar *msg = string_sprintf("Too many arguments in command \"%s\" in "
+          "%s", addr->local_part + 1, etext);
+        if (addr != NULL)
+          {
+          addr->transport_return = FAIL;
+          addr->message = msg;
+          }
+        else *errptr = msg;
+        return FALSE;
+        }
+
+      if (argcount + address_pipe_argcount - 1 > max_args)
+        {
+        addr->transport_return = FAIL;
+        addr->message = string_sprintf("Too many arguments to command \"%s\" "
+          "in %s", cmd, etext);
+        return FALSE;
+        }
+
+      if (address_pipe_argcount > 1)
+        memmove(argv + i + address_pipe_argcount, argv + i + 1,
+          (argcount - i)*sizeof(uschar *));
+
+      for (address_pipe_i = 0; address_pipe_argv[address_pipe_i] != (uschar *)0; address_pipe_i++) argv[i++] = address_pipe_argv[address_pipe_i];
+      i--;
+
+      }
+
     /* Handle normal expansion string */
 
     else
